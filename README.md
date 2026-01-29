@@ -43,7 +43,7 @@ This is standard practice. The cryptographic code is public so you can verify ou
 We encourage security researchers to:
 - Review the encryption implementation
 - Verify our zero-knowledge claims
-- Report vulnerabilities to security@sharemylogin.com
+- Report vulnerabilities using this [email](https://antiscrape.xyz/u/69UeWM)
 
 ---
 
