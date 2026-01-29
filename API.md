@@ -82,4 +82,4 @@ For security, we don't publish:
 
 ---
 
-**Questions?** security@sharemylogin.com
+**Questions?** send an [email](https://antiscrape.xyz/u/69UeWM)
