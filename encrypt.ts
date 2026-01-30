@@ -10,6 +10,12 @@
 export const PBKDF2_ITERATIONS = 250000;
 export const SALT_LENGTH = 16;
 export const IV_LENGTH = 12; // GCM standard
+export const MIN_PASSWORD_LENGTH = 8; // Minimum password length for security
+export const MAX_DATA_SIZE = 1_000_000; // 1MB - Maximum plaintext size to prevent DoS
+export const HASH_ALGORITHM = "SHA-256"; // Hash algorithm for PBKDF2
+export const AES_KEY_LENGTH = 256; // AES key length in bits
+export const KDF_ALGORITHM = "PBKDF2"; // Key derivation function
+export const ENCRYPTION_ALGORITHM = "AES-GCM"; // Encryption algorithm
 
 /**
  * Derives a cryptographic key from a password using PBKDF2.
@@ -24,20 +30,20 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     const keyMaterial = await window.crypto.subtle.importKey(
         "raw",
         passwordBuffer,
-        { name: "PBKDF2" },
+        { name: KDF_ALGORITHM },
         false,
         ["deriveKey"]
     );
 
     return window.crypto.subtle.deriveKey(
         {
-            name: "PBKDF2",
+            name: KDF_ALGORITHM,
             salt: salt as BufferSource,
             iterations: PBKDF2_ITERATIONS,
-            hash: "SHA-256",
+            hash: HASH_ALGORITHM,
         },
         keyMaterial,
-        { name: "AES-GCM", length: 256 },
+        { name: ENCRYPTION_ALGORITHM, length: AES_KEY_LENGTH },
         false,
         ["encrypt", "decrypt"]
     );
@@ -60,6 +66,16 @@ export async function encryptData(data: string, password: string): Promise<{
     iv: string;
     salt: string;
 }> {
+    // Input validation
+    if (!password || password.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+    }
+    if (!data || data.trim().length === 0) {
+        throw new Error("Data cannot be empty");
+    }
+    if (data.length > MAX_DATA_SIZE) {
+        throw new Error(`Data too large. Maximum size is ${Math.floor(MAX_DATA_SIZE / 1_000_000)}MB`);
+    }
     const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
     const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
     const key = await deriveKey(password, salt);
@@ -67,7 +83,7 @@ export async function encryptData(data: string, password: string): Promise<{
 
     const encryptedContent = await window.crypto.subtle.encrypt(
         {
-            name: "AES-GCM",
+            name: ENCRYPTION_ALGORITHM,
             iv: iv,
         },
         key,
