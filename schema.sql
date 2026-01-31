@@ -20,6 +20,10 @@ CREATE TABLE secrets (
     destroy_token_hash TEXT       -- SHA-256 hash (not the actual token)
 );
 
+-- Indexes to improve query performance
+CREATE INDEX idx_expires_at ON secrets(expires_at);
+CREATE INDEX idx_created_at ON secrets(created_at);
+
 -- WHAT'S NOT HERE:
 -- ❌ No plaintext passwords
 -- ❌ No decryption keys

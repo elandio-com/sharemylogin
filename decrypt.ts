@@ -9,7 +9,14 @@
  * ensuring data integrity and authenticity.
  */
 
-import { PBKDF2_ITERATIONS } from './encrypt';
+import {
+    PBKDF2_ITERATIONS,
+
+    HASH_ALGORITHM,
+    AES_KEY_LENGTH,
+    KDF_ALGORITHM,
+    ENCRYPTION_ALGORITHM
+} from './encrypt';
 
 /**
  * Decrypts data using AES-256-GCM with a password-derived key.
@@ -20,11 +27,6 @@ import { PBKDF2_ITERATIONS } from './encrypt';
  * @param saltBase64 Base64-encoded salt.
  * @returns Decrypted plaintext string.
  * @throws Error if password is wrong or data is corrupted.
- * 
- * Security notes:
- * - AES-GCM validates the auth tag (included in ciphertext)
- * - Invalid password or tampered data will throw an error
- * - Plaintext only exists in browser memory during this call
  */
 export async function decryptData(
     ciphertext: string,
@@ -32,6 +34,13 @@ export async function decryptData(
     ivBase64: string,
     saltBase64: string
 ): Promise<string> {
+    // Validate required parameters
+    if (!ciphertext || !password || !ivBase64 || !saltBase64) {
+        throw new Error("Missing required parameters for decryption");
+    }
+    // Note: We deliberately DO NOT check password length here (unlike encryption).
+    // This allows old secrets (created before 16-char policy) to still be decrypted.
+
     const salt = base64ToUint8Array(saltBase64);
     const iv = base64ToUint8Array(ivBase64);
     const encryptedData = base64ToArrayBuffer(ciphertext);
@@ -42,20 +51,20 @@ export async function decryptData(
     const keyMaterial = await window.crypto.subtle.importKey(
         "raw",
         passwordBuffer,
-        { name: "PBKDF2" },
+        { name: KDF_ALGORITHM },
         false,
         ["deriveKey"]
     );
 
     const key = await window.crypto.subtle.deriveKey(
         {
-            name: "PBKDF2",
+            name: KDF_ALGORITHM,
             salt: salt as BufferSource,
             iterations: PBKDF2_ITERATIONS,
-            hash: "SHA-256",
+            hash: HASH_ALGORITHM,
         },
         keyMaterial,
-        { name: "AES-GCM", length: 256 },
+        { name: ENCRYPTION_ALGORITHM, length: AES_KEY_LENGTH },
         false,
         ["decrypt"]
     );
@@ -65,7 +74,7 @@ export async function decryptData(
         // If the password is wrong or data was tampered, this will throw.
         const decrypted = await window.crypto.subtle.decrypt(
             {
-                name: "AES-GCM",
+                name: ENCRYPTION_ALGORITHM,
                 iv: iv as BufferSource,
             },
             key,
@@ -75,8 +84,13 @@ export async function decryptData(
         const decoder = new TextDecoder();
         return decoder.decode(decrypted);
     } catch (e) {
-        // Decryption failed - wrong password or corrupted/tampered data
-        throw new Error("Decryption failed. Incorrect password or data corruption.");
+        // Human-friendly error for wrong password
+        if (e instanceof DOMException && e.name === 'OperationError') {
+            throw new Error("Incorrect password or corrupted data");
+        }
+        // Generic fall-through
+        console.error('[Decryption Error]', e);
+        throw new Error("Decryption failed. Please verify your inputs.");
     }
 }
 
