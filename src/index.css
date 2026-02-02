@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Clean, minimal styles for the reference client */
+body {
+    background-color: #f9fafb;
+}

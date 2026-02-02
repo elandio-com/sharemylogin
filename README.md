@@ -1,54 +1,52 @@
-# ShareMyLogin — Encryption Library
+# ShareMyLogin - Reference Client
 
-**Open source cryptographic core for zero-knowledge credential sharing.**
+This repository contains the **Reference Client** and **Core Security Implementation** for [ShareMyLogin.com](https://sharemylogin.com).
 
-This repository contains **only the client-side encryption code** used by [ShareMyLogin](https://sharemylogin.com). We publish this so you can verify our zero-knowledge claims.
+## The "Trust Model"
 
----
+This repository provides transparency into the encryption logic used by **ShareMyLogin.com**.
 
-## What You Can Verify
+*   **Public Code (This Memo)**: The client-side code (`src/crypto/`) and logic here is identical to what runs on the production site.
+*   **Hosted Service (ShareMyLogin.com)**: The hosted version uses this exact client code, wrapped in a branded UI with additional operational controls (Rate Limiting, CAPTCHA, Durable Database).
 
-1. ✅ Encryption happens **in your browser**, not on our servers
-2. ✅ We use **AES-256-GCM** encryption
-3. ✅ Key derivation uses **PBKDF2 with 250,000 iterations**
-4. ✅ We **never see your plaintext data or password**
-5. ✅ The authentication tag is validated on decryption
+By open-sourcing the client, we allow security researchers and users to verify that **encryption happens locally** and keys are never sent to the server.
 
----
+## Self-Hosting / Running Locally
 
-## Files
+This reference implementation includes a fully functional frontend and a **Reference In-Memory Backend**.
+> **Note**: The backend in this repo is for testing/verification. It stores secrets in RAM, so they are lost if you restart the server.
 
-| File | Purpose |
-|------|---------|
-| `encrypt.ts` | Client-side encryption |
-| `decrypt.ts` | Client-side decryption |
-| `schema.sql` | Database schema (proves no plaintext stored) |
-| `API.md` | API behavior overview |
+### Prerequisites
+*   Node.js 18+
+*   npm
 
----
+### Quick Start
 
-## What's Intentionally Private
+1.  **Install Dependencies**
+    ```bash
+    npm install
+    ```
 
-For security, the following are **not published**:
-- Rate limiting and abuse prevention
-- CAPTCHA integration
-- Backend infrastructure details
+2.  **Run Development Server**
+    ```bash
+    # Runs both Frontend (Vite) and Backend (Node) concurrently
+    npm run dev & npm run server
+    ```
+    *   Frontend: `http://localhost:5173`
+    *   Backend: `http://localhost:3001` (Reference API)
 
-This is standard practice. The cryptographic code is public so you can verify our claims.
+3.  **Build for Production**
+    ```bash
+    npm run build
+    ```
 
----
+## Project Structure
 
-## Audit This Code
-
-We encourage security researchers to:
-- Review the encryption implementation
-- Verify our zero-knowledge claims
-- Report vulnerabilities using this [email](https://antiscrape.xyz/u/69UeWM)
-
----
+*   `src/crypto/`: The core encryption/decryption logic (Audit this!).
+*   `src/pages/`: The UI logic that handles form submission.
+*   `backend/`: A simple Node.js server reference implementation.
+*   `backend/schema.sql`: The D1 Database schema used in production (if you want to implement a durable backend).
 
 ## License
 
-MIT License
-
-**Built by [Elandio](https://elandio.com)**
+MIT

@@ -82,4 +82,4 @@ For security, we don't publish:
 
 ---
 
-**Questions?** send an [email](https://antiscrape.xyz/u/69UeWM)
+**Questions?** [https://antiscrape.xyz/u/pnqNqe](https://antiscrape.xyz/u/pnqNqe)
