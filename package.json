@@ -1,5 +1,5 @@
 {
-    "name": "sharemylogin-reference-client",
+    "name": "sharemylogin-client",
     "private": true,
     "version": "1.0.0",
     "type": "module",

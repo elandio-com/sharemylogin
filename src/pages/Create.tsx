@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { encryptData } from '../crypto/encrypt';
-import { useDocumentTitle } from '../hooks/useDocumentTitle'; // Removed unused Turnstile import
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 // In production, this uses the real API. In this reference client, it uses the local in-memory server.
 const API_BASE = '/api';
@@ -22,9 +22,7 @@ export function Create() {
     const [loading, setLoading] = useState(false);
     const [generatedLink, setGeneratedLink] = useState('');
     const [error, setError] = useState('');
-
-    // In reference client, we bypass turnstile logic if key is missing, or user can provide a dummy key
-    const [turnstileToken, setTurnstileToken] = useState('test-token');
+    const [turnstileToken] = useState('test-token');
 
     useEffect(() => {
         generateNewPassword();
@@ -63,7 +61,7 @@ export function Create() {
                 })
             });
 
-            if (!res.ok) throw new Error('Failed to create secret');
+            if (!res.ok) throw new Error('Failed to create secret. Is the backend running?');
 
             const data = await res.json();
             const link = `${window.location.origin}/view/${data.id}#${data.destroyToken}`;
@@ -154,7 +152,7 @@ export function Create() {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Username / Email</label>
                                     <input
                                         className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                         placeholder="user@example.com"
@@ -162,87 +160,102 @@ export function Create() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Password / Secret</label>
                                     <input
                                         className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                        placeholder="Secret Password"
+                                        type="text"
+                                        placeholder="Secret value..."
+                                        required
                                         value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })}
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">URL (Optional)</label>
-                                    <input
-                                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono"
-                                        placeholder="https://"
-                                        value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">2FA / TOTP (Optional)</label>
-                                    <input
-                                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm tracking-widest"
-                                        placeholder="000 000"
-                                        value={formData.twoFactor} onChange={e => setFormData({ ...formData, twoFactor: e.target.value })}
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">2FA / TOTP Code</label>
+                                <input
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    placeholder="e.g. 123 456"
+                                    value={formData.twoFactor} onChange={e => setFormData({ ...formData, twoFactor: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">URL (Optional)</label>
+                                <input
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    placeholder="https://"
+                                    value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })}
+                                />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                                 <textarea
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm h-32 resize-y"
-                                    placeholder="Any additional instructions..."
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    rows={3}
+                                    placeholder="Any usage instructions..."
                                     value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                 />
                             </div>
                         </div>
 
                         {/* Right Column: Settings */}
-                        <div className="lg:col-span-1 border-t lg:border-t-0 lg:border-l border-gray-100 lg:pl-8 pt-6 lg:pt-0 space-y-6">
-                            <div className="bg-gray-50 p-5 rounded-lg border border-gray-100">
-                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Settings</h3>
-
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Expiration</label>
-                                    <select
-                                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm"
-                                        value={expiry} onChange={e => setExpiry(e.target.value)}
-                                    >
-                                        <option value="one-time">1 View (Self-Destruct)</option>
-                                        <option value="24h">24 Hours</option>
-                                        <option value="7d">7 Days</option>
-                                    </select>
+                        <div className="bg-gray-50 -my-8 -mr-8 p-8 border-l border-gray-100 flex flex-col justify-between">
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Expiration</label>
+                                    <div className="space-y-3">
+                                        {[
+                                            { id: 'one-time', label: '1 View (One-Time)', desc: 'Burns after reading' },
+                                            { id: '24h', label: '24 Hours', desc: 'Expires in 1 day' },
+                                            { id: '7d', label: '7 Days', desc: 'Expires in 1 week' }
+                                        ].map((opt) => (
+                                            <div key={opt.id} className="flex items-center">
+                                                <input
+                                                    id={opt.id}
+                                                    name="expiry"
+                                                    type="radio"
+                                                    checked={expiry === opt.id}
+                                                    onChange={() => setExpiry(opt.id)}
+                                                    className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
+                                                />
+                                                <label htmlFor={opt.id} className="ml-3 block">
+                                                    <span className="block text-sm font-medium text-gray-700">{opt.label}</span>
+                                                    <span className="block text-xs text-gray-500">{opt.desc}</span>
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-
-                                <div className="text-xs text-gray-500 space-y-2">
-                                    <p className="flex items-start gap-2">
-                                        <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                        passwords auto-generated
-                                    </p>
-                                    <p className="flex items-start gap-2">
-                                        <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                        encrypted locally (AES-256)
-                                    </p>
-                                </div>
+                                {/* Password hidden in initial view for cleaner UX. Auto-generated in background. */}
                             </div>
 
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {loading ? 'Encrypting...' : 'Encrypt & Share'}
-                            </button>
-                            {error && <p className="text-red-500 text-xs text-center font-medium">{error}</p>}
+                            {/* Inline Error Message */}
+                            {error && (
+                                <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                                    <p className="text-red-600 text-sm font-medium">{error}</p>
+                                </div>
+                            )}
+
+                            <div className="mt-8">
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-bold text-white transition-all
+                                        ${loading ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
+                                >
+                                    {loading ? 'Encrypting...' : 'Create Secret Link'}
+                                </button>
+                                <p className="mt-4 text-xs text-gray-400 text-center">
+                                    Encryption happens in your browser. <br /> The server never sees the key.
+                                </p>
+                            </div>
                         </div>
                     </form>
                 </div>
-
                 <div className="text-center text-xs text-gray-400">
-                    <p>Developed by <a href="https://elandio.com" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors font-medium">Elandio</a></p>
+                    <p>Open Source Reference Client &bull; <a href="https://elandio.com" className="hover:text-gray-600 transition-colors">Elandio</a></p>
                 </div>
             </div>
         </div>

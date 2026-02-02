@@ -16,6 +16,11 @@ export function View() {
     const [loading, setLoading] = useState(true);
     const [meta, setMeta] = useState<any>(null);
     const [destroyToken, setDestroyToken] = useState(() => window.location.hash.slice(1));
+    const [turnstileToken, setTurnstileToken] = useState('test-token'); // Dummy token for ref client
+    const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+    const [cachedSecret, setCachedSecret] = useState<{ ciphertext: string, iv: string, salt: string } | null>(null);
+    const [localAttempts, setLocalAttempts] = useState(0);
+    const [unlocking, setUnlocking] = useState(false);
 
     useEffect(() => {
         fetch(`${API_BASE}/view/${id}`)
@@ -35,20 +40,36 @@ export function View() {
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
+        setUnlocking(true);
+        setError('');
+
+        if (localAttempts >= 5) {
+            setError('Max attempts reached. Secret destroyed.');
+            setUnlocking(false);
+            return;
+        }
+
+        let secretData = cachedSecret;
+
         try {
-            // Prepare headers
-            const headers: any = { 'Content-Type': 'application/json' };
-            if (destroyToken) headers['X-Destroy-Token'] = destroyToken;
+            if (!secretData) {
+                // Prepare headers
+                const headers: any = { 'Content-Type': 'application/json' };
+                if (destroyToken) headers['X-Destroy-Token'] = destroyToken;
 
-            // 1. Get Ciphertext
-            const res = await fetch(`${API_BASE}/reveal/${id}`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({})
-            });
+                // 1. Get Ciphertext
+                const res = await fetch(`${API_BASE}/reveal/${id}`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({})
+                });
 
-            if (!res.ok) throw new Error('Failed to retrieve data');
-            const secretData = await res.json();
+                if (!res.ok) throw new Error('Failed to retrieve data');
+                secretData = await res.json();
+                setCachedSecret(secretData);
+            }
+
+            if (!secretData) throw new Error('No secret data available.');
 
             // 2. Decrypt locally
             const plaintext = await decryptData(secretData.ciphertext, password, secretData.iv, secretData.salt);
@@ -58,9 +79,60 @@ export function View() {
             await fetch(`${API_BASE}/attempt/${id}`, { method: 'POST', body: JSON.stringify({}) });
 
         } catch (err: any) {
-            // Report Failure
-            await fetch(`${API_BASE}/attempt/${id}`, { method: 'POST', body: JSON.stringify({}) });
-            setError('Decryption failed or secret destroyed.');
+            console.error(err);
+
+            if (err.message === "Incorrect password or corrupted data" || err.message === "Failed to retrieve data" || err.message === 'Decryption failed. Please verify your inputs.') {
+                // 1. Report failure to server (stats only)
+                // We expect this to return 404 for One-Time secrets (since they are already deleted)
+                try {
+                    const attemptRes = await fetch(`${API_BASE}/attempt/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ turnstileToken })
+                    });
+
+                    if (attemptRes.ok) {
+                        // 24h/7d secrets: Server tracks attempts
+                        const attemptData = await attemptRes.json();
+                        if (attemptData.remaining !== undefined) {
+                            setAttemptsRemaining(attemptData.remaining);
+                        }
+                    } else if (attemptRes.status === 410) {
+                        // Server says it's destroyed (hit limit on server)
+                        setCachedSecret(null);
+                        setError('Max attempts reached. Secret destroyed.');
+                        return;
+                    }
+                } catch (e) { /* ignore network reporting errors */ }
+
+                // 2. Local Logic for One-Time Secrets (which are 404 on server)
+                if (meta && meta.ttlMode === 'one-time') {
+                    const newLocalAttempts = localAttempts + 1;
+                    setLocalAttempts(newLocalAttempts);
+
+                    const remaining = 5 - newLocalAttempts;
+                    setAttemptsRemaining(remaining);
+
+                    if (remaining <= 0) {
+                        setCachedSecret(null);
+                        setDecrypted('');
+                        setError('Max attempts reached. Secret destroyed permanently.');
+                        setUnlocking(false);
+                        return;
+                    }
+                }
+
+                if (err.message === "Failed to retrieve data") {
+                    setError('Secret unavailable or already destroyed.');
+                } else {
+                    setError('Incorrect password.');
+                }
+
+            } else {
+                setError(err.message || 'An error occurred.');
+            }
+        } finally {
+            setUnlocking(false);
         }
     };
 
@@ -72,7 +144,7 @@ export function View() {
         );
     }
 
-    if (error && !decrypted) {
+    if (error && !decrypted && !cachedSecret) {
         return (
             <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
                 <div className="max-w-md w-full bg-white rounded-xl shadow-lg border border-gray-100 p-8 text-center">
@@ -237,6 +309,11 @@ export function View() {
                                 className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg text-center font-bold text-lg placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                                 autoFocus
                             />
+                            {attemptsRemaining !== null && attemptsRemaining < 5 && (
+                                <p className="text-red-500 text-xs mt-2 text-center font-bold">
+                                    {attemptsRemaining} attempts remaining
+                                </p>
+                            )}
                         </div>
                         <button
                             type="submit"
@@ -245,6 +322,7 @@ export function View() {
                             Unlock
                         </button>
                     </form>
+                    {error && <p className="mt-4 text-red-500 text-sm text-center font-medium bg-red-50 py-2 rounded border border-red-100">{error}</p>}
                 </div>
             </div>
             <div className="mt-8 text-center text-xs text-gray-400">

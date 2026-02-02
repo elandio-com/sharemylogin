@@ -8,17 +8,17 @@ import './index.css'
 
 function App() {
     return (
-        <BrowserRouter>
-            <Routes>
-                <Route path="/" element={<Create />} />
-                <Route path="/view/:id" element={<View />} />
-            </Routes>
-        </BrowserRouter>
+        <Routes>
+            <Route path="/" element={<Create />} />
+            <Route path="/view/:id" element={<View />} />
+        </Routes>
     )
 }
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <App />
+        <BrowserRouter>
+            <App />
+        </BrowserRouter>
     </StrictMode>,
 )
