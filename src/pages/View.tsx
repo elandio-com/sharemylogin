@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { decryptData } from '../crypto/decrypt';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import Turnstile from 'react-turnstile';
 
 const API_BASE = '/api';
 
@@ -21,6 +22,7 @@ export function View() {
     const [cachedSecret, setCachedSecret] = useState<{ ciphertext: string, iv: string, salt: string } | null>(null);
     const [localAttempts, setLocalAttempts] = useState(0);
     const [unlocking, setUnlocking] = useState(false);
+    const turnstileRef = useRef<any>(null);
 
     useEffect(() => {
         fetch(`${API_BASE}/view/${id}`)
@@ -81,31 +83,14 @@ export function View() {
         } catch (err: any) {
             console.error(err);
 
-            if (err.message === "Incorrect password or corrupted data" || err.message === "Failed to retrieve data" || err.message === 'Decryption failed. Please verify your inputs.') {
-                // 1. Report failure to server (stats only)
-                // We expect this to return 404 for One-Time secrets (since they are already deleted)
-                try {
-                    const attemptRes = await fetch(`${API_BASE}/attempt/${id}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ turnstileToken })
-                    });
+            if (err.message === "Incorrect password or corrupted data" || err.message === "Decryption failed. Please verify your inputs.") {
 
-                    if (attemptRes.ok) {
-                        // 24h/7d secrets: Server tracks attempts
-                        const attemptData = await attemptRes.json();
-                        if (attemptData.remaining !== undefined) {
-                            setAttemptsRemaining(attemptData.remaining);
-                        }
-                    } else if (attemptRes.status === 410) {
-                        // Server says it's destroyed (hit limit on server)
-                        setCachedSecret(null);
-                        setError('Max attempts reached. Secret destroyed.');
-                        return;
-                    }
-                } catch (e) { /* ignore network reporting errors */ }
+                // Optimistically decrement visual counter
+                if (attemptsRemaining !== null && attemptsRemaining > 0) {
+                    setAttemptsRemaining(prev => (prev !== null ? prev - 1 : null));
+                }
 
-                // 2. Local Logic for One-Time Secrets (which are 404 on server)
+                // 2. Local Logic for One-Time Secrets
                 if (meta && meta.ttlMode === 'one-time') {
                     const newLocalAttempts = localAttempts + 1;
                     setLocalAttempts(newLocalAttempts);
@@ -120,13 +105,39 @@ export function View() {
                         setUnlocking(false);
                         return;
                     }
+
+                    // Reset Turnstile locally - NOT NEEDED for persistent local state
+                    // if (turnstileRef.current) turnstileRef.current.reset();
+                    // setTurnstileToken('');
+                    setError('Incorrect password.');
+                    return;
                 }
 
-                if (err.message === "Failed to retrieve data") {
-                    setError('Secret unavailable or already destroyed.');
-                } else {
-                    setError('Incorrect password.');
-                }
+                // Report to server (for 24h/7d secrets)
+                try {
+                    const attemptRes = await fetch(`${API_BASE}/attempt/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ turnstileToken })
+                    });
+
+                    if (attemptRes.ok) {
+                        const attemptData = await attemptRes.json();
+                        if (attemptData.remaining !== undefined) {
+                            setAttemptsRemaining(attemptData.remaining);
+                        }
+                    } else if (attemptRes.status === 410) {
+                        setCachedSecret(null);
+                        setError('Max attempts reached. Secret destroyed.');
+                        return;
+                    }
+                } catch (e) { /* ignore */ }
+
+                setError('Incorrect password.');
+
+                // Reset Turnstile for next attempt
+                if (turnstileRef.current) turnstileRef.current.reset();
+                setTurnstileToken('');
 
             } else {
                 setError(err.message || 'An error occurred.');
@@ -314,6 +325,15 @@ export function View() {
                                     {attemptsRemaining} attempts remaining
                                 </p>
                             )}
+                        </div>
+                        <div className="flex justify-center min-h-[65px] mb-4">
+                            <Turnstile
+                                // @ts-ignore
+                                ref={turnstileRef}
+                                sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAACQ5r7lRdZqxQmYe"}
+                                onVerify={(token) => setTurnstileToken(token)}
+                                theme="dark"
+                            />
                         </div>
                         <button
                             type="submit"
