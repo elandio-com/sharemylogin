@@ -56,8 +56,7 @@ export function Create() {
                     ciphertext,
                     iv,
                     salt,
-                    expiryType: expiry,
-                    turnstileToken
+                    expiryType: expiry
                 })
             });
 
@@ -255,7 +254,7 @@ export function Create() {
                     </form>
                 </div>
                 <div className="text-center text-xs text-gray-400">
-                    <p>Open Source Reference Client &bull; <a href="https://elandio.com" className="hover:text-gray-600 transition-colors">Elandio</a></p>
+                    <p>Open Source | Developed by &bull; <a href="https://elandio.com" className="hover:text-gray-600 transition-colors">Elandio</a></p>
                 </div>
             </div>
         </div>

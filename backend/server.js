@@ -45,6 +45,7 @@ const server = createServer(async (req, res) => {
             let expiresAt = now + (24 * 60 * 60); // Default 24h
 
             if (body.expiryType === '7d') expiresAt = now + (7 * 24 * 60 * 60);
+            if (body.expiryType === 'one-time') expiresAt = now + (30 * 24 * 60 * 60);
 
             secrets.set(id, {
                 ciphertext: body.ciphertext,
@@ -86,7 +87,8 @@ const server = createServer(async (req, res) => {
             res.writeHead(200, headers);
             res.end(JSON.stringify({
                 ttlMode: secret.ttlMode,
-                expiresAt: secret.expiresAt
+                expiresAt: secret.expiresAt,
+                hasDestroyToken: true
             }));
             return;
         }
@@ -110,7 +112,8 @@ const server = createServer(async (req, res) => {
                 return;
             }
 
-            // One-time logic
+            // One-time logic: NOW MOVED TO DELETE /destroy
+            // We no longer burn on fetch.
             if (secret.ttlMode === 'one-time') {
                 const clientToken = req.headers['x-destroy-token'];
                 if (clientToken !== secret.destroyToken) {
@@ -118,8 +121,6 @@ const server = createServer(async (req, res) => {
                     res.end(JSON.stringify({ error: 'Missing token for one-time secret' }));
                     return;
                 }
-                // Mark/Delete
-                secrets.delete(id);
             }
 
             res.writeHead(200, headers);
@@ -143,15 +144,17 @@ const server = createServer(async (req, res) => {
             }
 
             secret.attempts++;
-            if (secret.attempts >= 5) {
+
+            // Global Safety Cap (Basic Reference Impl)
+            if (secret.attempts >= 30) {
                 secrets.delete(id);
                 res.writeHead(410, headers);
-                res.end(JSON.stringify({ error: 'Destroyed' }));
+                res.end(JSON.stringify({ error: "Secret destroyed due to excessive attempts." }));
                 return;
             }
 
             res.writeHead(200, headers);
-            res.end(JSON.stringify({ remaining: 5 - secret.attempts }));
+            res.end(JSON.stringify({ remaining: 30 - secret.attempts }));
             return;
         }
 

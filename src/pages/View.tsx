@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { decryptData } from '../crypto/decrypt';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import Turnstile from 'react-turnstile';
 
 const API_BASE = '/api';
 
@@ -16,13 +15,8 @@ export function View() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(true);
     const [meta, setMeta] = useState<any>(null);
-    const [destroyToken, setDestroyToken] = useState(() => window.location.hash.slice(1));
-    const [turnstileToken, setTurnstileToken] = useState('test-token'); // Dummy token for ref client
-    const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+    const [destroyToken] = useState(() => window.location.hash.slice(1));
     const [cachedSecret, setCachedSecret] = useState<{ ciphertext: string, iv: string, salt: string } | null>(null);
-    const [localAttempts, setLocalAttempts] = useState(0);
-    const [unlocking, setUnlocking] = useState(false);
-    const turnstileRef = useRef<any>(null);
 
     useEffect(() => {
         fetch(`${API_BASE}/view/${id}`)
@@ -42,24 +36,15 @@ export function View() {
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
-        setUnlocking(true);
         setError('');
-
-        if (localAttempts >= 5) {
-            setError('Max attempts reached. Secret destroyed.');
-            setUnlocking(false);
-            return;
-        }
 
         let secretData = cachedSecret;
 
         try {
             if (!secretData) {
-                // Prepare headers
                 const headers: any = { 'Content-Type': 'application/json' };
                 if (destroyToken) headers['X-Destroy-Token'] = destroyToken;
 
-                // 1. Get Ciphertext
                 const res = await fetch(`${API_BASE}/reveal/${id}`, {
                     method: 'POST',
                     headers,
@@ -73,77 +58,33 @@ export function View() {
 
             if (!secretData) throw new Error('No secret data available.');
 
-            // 2. Decrypt locally
             const plaintext = await decryptData(secretData.ciphertext, password, secretData.iv, secretData.salt);
             setDecrypted(plaintext);
 
-            // 3. Report Success (if needed for attempts logic, simplified here)
+            // Burn if one-time
+            if (meta && meta.ttlMode === 'one-time') {
+                const tokenToBurn = destroyToken || window.location.hash.slice(1);
+                fetch(`${API_BASE}/destroy/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ destroyToken: tokenToBurn })
+                }).catch(e => console.error('Failed to burn secret', e));
+            }
+
+            // Report Success
             await fetch(`${API_BASE}/attempt/${id}`, { method: 'POST', body: JSON.stringify({}) });
 
         } catch (err: any) {
             console.error(err);
 
             if (err.message === "Incorrect password or corrupted data" || err.message === "Decryption failed. Please verify your inputs.") {
-
-                // Optimistically decrement visual counter
-                if (attemptsRemaining !== null && attemptsRemaining > 0) {
-                    setAttemptsRemaining(prev => (prev !== null ? prev - 1 : null));
-                }
-
-                // 2. Local Logic for One-Time Secrets
-                if (meta && meta.ttlMode === 'one-time') {
-                    const newLocalAttempts = localAttempts + 1;
-                    setLocalAttempts(newLocalAttempts);
-
-                    const remaining = 5 - newLocalAttempts;
-                    setAttemptsRemaining(remaining);
-
-                    if (remaining <= 0) {
-                        setCachedSecret(null);
-                        setDecrypted('');
-                        setError('Max attempts reached. Secret destroyed permanently.');
-                        setUnlocking(false);
-                        return;
-                    }
-
-                    // Reset Turnstile locally - NOT NEEDED for persistent local state
-                    // if (turnstileRef.current) turnstileRef.current.reset();
-                    // setTurnstileToken('');
-                    setError('Incorrect password.');
-                    return;
-                }
-
-                // Report to server (for 24h/7d secrets)
-                try {
-                    const attemptRes = await fetch(`${API_BASE}/attempt/${id}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ turnstileToken })
-                    });
-
-                    if (attemptRes.ok) {
-                        const attemptData = await attemptRes.json();
-                        if (attemptData.remaining !== undefined) {
-                            setAttemptsRemaining(attemptData.remaining);
-                        }
-                    } else if (attemptRes.status === 410) {
-                        setCachedSecret(null);
-                        setError('Max attempts reached. Secret destroyed.');
-                        return;
-                    }
-                } catch (e) { /* ignore */ }
-
-                setError('Incorrect password.');
-
-                // Reset Turnstile for next attempt
-                if (turnstileRef.current) turnstileRef.current.reset();
-                setTurnstileToken('');
-
+                setError('Incorrect password. Please try again.');
+                await fetch(`${API_BASE}/attempt/${id}`, { method: 'POST', body: JSON.stringify({}) });
             } else {
                 setError(err.message || 'An error occurred.');
             }
         } finally {
-            setUnlocking(false);
+            setLoading(false); // Ensure loading is off if we were using it, or just do nothing
         }
     };
 
@@ -320,21 +261,8 @@ export function View() {
                                 className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg text-center font-bold text-lg placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                                 autoFocus
                             />
-                            {attemptsRemaining !== null && attemptsRemaining < 5 && (
-                                <p className="text-red-500 text-xs mt-2 text-center font-bold">
-                                    {attemptsRemaining} attempts remaining
-                                </p>
-                            )}
                         </div>
-                        <div className="flex justify-center min-h-[65px] mb-4">
-                            <Turnstile
-                                // @ts-ignore
-                                ref={turnstileRef}
-                                sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAACQ5r7lRdZqxQmYe"}
-                                onVerify={(token) => setTurnstileToken(token)}
-                                theme="dark"
-                            />
-                        </div>
+                        {/* No Turnstile here - local only */}
                         <button
                             type="submit"
                             className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg shadow-blue-500/20 transition-all active:scale-[0.98]"
